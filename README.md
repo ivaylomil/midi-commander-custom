@@ -13,7 +13,7 @@ This project provides the following components that work together:
 
 # Build status
 
-There is the current build under `DFU\DFU_OUT\generated_xxx.dfu`. See the instructions in the [development environment section](#basic-instructions-for-setting-up-development-environment) for building the firmware locally and/or loading it to the device.
+There is the current build under `artifacts/dfu/generated_xxx.dfu`. See the instructions in the [development environment section](#basic-instructions-for-setting-up-development-environment) for building the firmware locally and/or loading it to the device.
 
 Anything I leave in there has had a bit of testing on my device, and everything appears to be working ok.  These are still Dev builds, so it's likely they'll have bugs.  But it's something you can play with, and you should be able to go back to an meloaudio build.
 
@@ -100,9 +100,63 @@ Once your Python environment is operational, you can load your configuration ont
 The tool will convert the CSV file to a binary format and transmit it to the Midi Commander. At the end of the operation the Midi Commander should restart to load the new configuration.
 
 # Basic instructions for setting up development environment
-Other than the simple python scripts, it's all just [STM32CubeIDE](https://www.st.com/en/development-tools/stm32cubeide.html). Install that, import the project from the `MIDI_Commander_Custom` directory into your workspace (it's just shrink wrapped Eclipse) and you're done.
+Install the [PlatformIO](https://platformio.org/) CLI (`pipx install platformio` works well) or the PlatformIO VS Code extension. All firmware sources now live under `firmware/`, so `platformio run -e midi_debug` produces the debugger-friendly image and `platformio run -e midi_dfu` outputs the DFU-offset build (and packages it automatically). No STM32CubeIDE metadata remains in the repository.
 
-There are two Build target, one called `DFU Release` for the DFU (with offset linker script and vector table) and the other called `Debug` for use with a ST-Link debugger. To build a DFU file for upload you'll need to build the binary in the IDE, then use the DFU packing tool that comes with the DFU uploader (can't remember their exact names off the top of my head.) Using the Intel HEX format file instead of the .bin saves you having to input the flash offset.
+## PlatformIO workflow (Linux/macOS/Windows)
+
+PlatformIO reproduces both build targets from the command line or the VS Code extension and keeps the sources inside `firmware/`. The firmware is still linked to run at `0x08003000` and the startup code now relocates the vector table automatically, so no extra bootloader tweaks are required.
+
+1. Install the PlatformIO CLI (`pipx install platformio`, `pip install --user platformio`, or use the PlatformIO VS Code extension).
+2. Build the DFU-offset firmware:
+
+   ```bash
+   platformio run -e midi_dfu
+   ```
+
+   On success PlatformIO prints a line from `[post_build_dfuse]` showing the freshly generated DFU file under `artifacts/dfu/platformio-<timestamp>.dfu` and copies it to `artifacts/dfu/platformio-latest.dfu`.
+3. Put the pedal in DFU mode and flash the DFU container. You can either let PlatformIO handle both the packaging and upload via the bundled `dfu-util`:
+
+   ```bash
+   platformio run -e midi_dfu -t upload
+   ```
+
+   The `scripts/post_build_dfuse.py` hook regenerates `artifacts/dfu/platformio-<timestamp>.dfu` and a stable `platformio-latest.dfu`, then `scripts/dfu_upload.py` runs `dfu-util --alt 0 --download artifacts/dfu/platformio-latest.dfu` with the STM32 DFU VID/PID (`0483:df11`).
+
+   Or invoke `dfu-util` yourself (handy when scripting or working on a different machine):
+
+   ```bash
+   dfu-util --alt 0 --download artifacts/dfu/platformio-latest.dfu
+   ```
+
+   The DFU file already targets `0x08003000`, so you do not need to pass `--dfuse-address` when using the packaged image. If you prefer writing the raw binary directly, use:
+
+   ```bash
+   dfu-util --alt 0 -s 0x08003000 --download .pio/build/midi_dfu/firmware.bin
+   ```
+
+4. For ST-Link workflows run `platformio run -e midi_debug -t upload`; this mirrors the Cube “Debug” target.
+
+Every build keeps the MeloAudio bootloader intact, so you can always revert to the stock firmware by flashing a vendor DFU image.
+
+### Capturing MIDI traffic for debugging
+
+Once the pedal enumerates as `MIDI Commander Custom`, you can monitor the raw MIDI stream via ALSA tools on Linux:
+
+```bash
+# List ALSA raw MIDI ports and note the hw:X,Y,Z number
+amidi -l
+
+# Dump incoming bytes until Ctrl+C
+amidi -d -p hw:2,0,0
+
+# Record to a file for later inspection
+amidi -d -p hw:2,0,0 > midi_dump.bin
+
+# View decoded events instead of raw hex
+aseqdump -p 'MIDI Commander Custom'
+```
+
+Make sure no other application exclusively owns the ALSA port (close DAWs/PipeWire bridges or use their routing features) before running `amidi`. On macOS/Windows you can use MIDI-OX, MIDI Monitor, or similar tools to achieve the same result.
 
 ## Loading the firmware
 
@@ -114,7 +168,7 @@ Then you connect the Midi Commander to the USB port of the computer and start it
 
 `dfu-util` should now be able to detect the device:
 
-```
+```text
 $ dfu-util --list
 ...
 Found DFU: [0483:df11] ver=0200, devnum=12, cfg=1, intf=0, path="4-1", alt=2, name="@NOR Flash : M29W128F/0x64000000/0256*64Kg", serial="5CE867623433"
@@ -122,26 +176,38 @@ Found DFU: [0483:df11] ver=0200, devnum=12, cfg=1, intf=0, path="4-1", alt=1, na
 Found DFU: [0483:df11] ver=0200, devnum=12, cfg=1, intf=0, path="4-1", alt=0, name="@Internal Flash  /0x08000000/06*002Ka,250*002Kg", serial="5CE867623433"
 ```
 
-If you have a DFU file (e.g. from `DFU/DFU_OUT/generated-*.dfu`), you can load it as follows. `--alt 0` should be used because it corresponds to the address range of the internal flash `0x80000000` in the list above.
+If you have a DFU file (e.g. from `artifacts/dfu/generated-*.dfu`), you can load it as follows. `--alt 0` should be used because it corresponds to the address range of the internal flash `0x80000000` in the list above.
 
-```
-dfu-util --alt 0 --download ./DFU/DFU_OUT/generated-*.dfu
+```bash
+dfu-util --alt 0 --download ./artifacts/dfu/generated-*.dfu
 ```
 
-If you are building the firmware yourself on macOS, it is unclear how you can create a DFU file. Instead you should use a binary file and specify the load address explicitly. To do that, use the `DFU Release` build target in STM32CubeIDE to produce a `.bin` binary file that you can load as follows:
+If you are building the firmware yourself, `platformio run -e midi_dfu` already emits both `.pio/build/midi_dfu/firmware.bin` and the packaged DFU under `artifacts/dfu`. You can also sidestep the DFU wrapper and push the raw binary directly:
 
-```
-dfu-util --alt 0 -s 0x8003000 --download "./MIDI_Commander_Custom/DFU Release/MIDI_Commander_Custom.bin"
+```bash
+dfu-util --alt 0 -s 0x8003000 --download .pio/build/midi_dfu/firmware.bin
 ```
 
 Once the firmware is loaded, turn off the device and turn it back on in normal mode. You should see the name and version of the custom firmware on the display briefly, and then the name of the first configured bank. You can now load your own configuration following the instructions in the section [Configuration](#configuration).
 
+### Manually re-running the DFU packer
+
+The post-build hook calls `tools/bin_to_dfuse.py` for you (producing both a timestamped file and `platformio-latest.dfu`), but you can still run it manually to regenerate a DFU with custom metadata or filenames:
+
+```bash
+platformio run -e midi_dfu
+python tools/bin_to_dfuse.py --bin .pio/build/midi_dfu/firmware.bin
+```
+
+This command emits `artifacts/dfu/platformio-<timestamp>.dfu`, refreshes `platformio-latest.dfu`, and keeps everything ready for flashing with ST's DFU utilities. Use `--out` to choose a different filename or `--address`, `--vendor`, `--product`, etc. if you ever need to adjust the metadata. Pass `--overwrite` when reusing the same output path.
+
 ## Python development
+
 Python files under `python/` can be edited directly, however it is recommended to use the VS Code workspace at the root of this repository with the recommended extensions. It is configured to use auto-formatting with Black and type checking with MyPy.
 
 The main entry point is `python/CSV_to_Flash.py` and some functionality is offloaded to modules under `python/lib`.
 
-# Acknowledgements
+## Acknowledgements
 
 - @harvie256: project founder
 - @eliericha: expansion to 10 commands per button
