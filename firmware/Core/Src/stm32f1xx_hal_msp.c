@@ -61,6 +61,32 @@ extern DMA_HandleTypeDef hdma_usart2_tx;
 /* USER CODE BEGIN 0 */
 
 /* USER CODE END 0 */
+
+/**
+* @brief ADC MSP Initialization
+* @param hadc: ADC handle pointer
+* @retval None
+*/
+void HAL_ADC_MspInit(ADC_HandleTypeDef* hadc)
+{
+  if(hadc->Instance==ADC1)
+  {
+    __HAL_RCC_ADC1_CLK_ENABLE();
+  }
+}
+
+/**
+* @brief ADC MSP De-Initialization
+* @param hadc: ADC handle pointer
+* @retval None
+*/
+void HAL_ADC_MspDeInit(ADC_HandleTypeDef* hadc)
+{
+  if(hadc->Instance==ADC1)
+  {
+    __HAL_RCC_ADC1_CLK_DISABLE();
+  }
+}
 /**
   * Initializes the Global MSP.
   */

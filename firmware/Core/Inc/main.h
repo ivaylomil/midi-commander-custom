@@ -101,6 +101,10 @@ void Error(char *msg);
 #define LED_A_GPIO_Port GPIOB
 #define SW_A_Pin GPIO_PIN_5
 #define SW_A_GPIO_Port GPIOB
+#define EXP1_Pin GPIO_PIN_7
+#define EXP1_GPIO_Port GPIOA
+#define EXP2_Pin GPIO_PIN_0
+#define EXP2_GPIO_Port GPIOB
 /* USER CODE BEGIN Private defines */
 
 #define FIRMWARE_VERSION	"0.1A PIO"

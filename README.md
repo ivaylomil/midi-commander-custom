@@ -34,16 +34,27 @@ I have had a lot of issues under Windows 10, and there are reports from others o
 - CC, Note and Pitch Bend support momentary, toggle, or an on-duration of up to 2.5 sec in 10ms increments. CC can also send just the start message.
 - Program Change messages can include the Bank Select messages prior to the PC message, either just the Lease Signficant Byte or both the LSB & MSB.
 - Pass through of Sync/Start/Stop messages from USB to the Serial MIDI connector.
+- Dual expression pedal inputs (PA7/PB0 via ADC1 ch7/ch8) emit MIDI CCs (EXP1 → CC#11, EXP2 → CC#4) on the configured global channel.
 
 - Firmware can be loaded through the normal DFU update process.
 - Configuration has been moved to the FLASH memory, so this will not affect the standard Melo firmware configuration that is stored in an external EEPROM.
 
 # Still to come
-- Expression Pedal inputs
 - The battery management has not been considered yet.  Not sure if it even works on batteries with this.
 - Plenty of code tidying to be done
 - Plenty of testing needed
 - Needs documentation.
+
+## Expression pedals
+
+Both 1/4" expression jacks now route to `ADC1` (channels 7 and 8 on PA7/PB0). The firmware samples each pedal every 5 ms, applies a small dead-zone, and transmits MIDI CC messages immediately when the value moves at least two counts. By default:
+
+- EXP1 → CC #11 (Expression 1)
+- EXP2 → CC #4 (Foot Control 2)
+
+The channel comes from the “Global Channel” field in the flash configuration, so you can point the pedals at any target rig without code changes. You can tweak CC numbers or the sampling interval in `firmware/Core/Src/expression.c` if you need a different mapping or response curve.
+
+If a connected pedal still produces no CC output (e.g. `amidi -d` remains silent), follow the step-by-step guide in `docs/expression_pedal_troubleshooting.md` to verify firmware, hardware wiring, and MIDI monitoring.
 
 
 # Configuration
@@ -211,3 +222,4 @@ The main entry point is `python/CSV_to_Flash.py` and some functionality is offlo
 
 - @harvie256: project founder
 - @eliericha: expansion to 10 commands per button
+- @BenjaminJensen: the info on expression pedals

@@ -16,6 +16,7 @@
 
 int8_t midiCmd_send_pc_command_from_rom(uint8_t *pRom);
 int8_t midiCmd_send_cc_command_from_rom(uint8_t *pRom, uint8_t on_off);
+int8_t midiCmd_send_cc(uint8_t channel, uint8_t cc_number, uint8_t value);
 int8_t midiCmd_send_note_command_from_rom(uint8_t *pRom, uint8_t on_off);
 int8_t midiCmd_send_pb_command_from_rom(uint8_t *pRom, uint8_t on_off);
 int8_t midiCmd_send_stop_command(void);

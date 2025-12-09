@@ -237,6 +237,37 @@ int8_t midiCmd_send_note_command_from_rom(uint8_t *pRom, uint8_t on_off){
 	return 0;
 }
 
+int8_t midiCmd_send_cc(uint8_t channel, uint8_t cc_number, uint8_t value)
+{
+	__disable_irq();
+	int8_t buffer_no = get_next_available_tx_buffer();
+	if(buffer_no < 0){
+		__enable_irq();
+		return ERROR_BUFFERS_FULL;
+	}
+
+	uint8_t *serialBuf = &(midi_uart_out_buffer[buffer_no][0]);
+	uint8_t *usbBuf = midi_usb_assembly_buffer;
+
+	*(usbBuf++) = CIN_CONTROL_CHANGE;
+	*(usbBuf++) = 0xB0 | (channel & 0xF);
+	*(usbBuf++) = cc_number & 0x7F;
+	*(usbBuf++) = value & 0x7F;
+
+	memcpy(serialBuf, (usbBuf-3), 3);
+	serialBuf += 3;
+
+	midi_uart_out_buffer_bytes_to_tx[buffer_no] = serialBuf - &midi_uart_out_buffer[buffer_no][0];
+
+	__enable_irq();
+
+	uint8_t usb_bytes_to_tx = usbBuf - midi_usb_assembly_buffer;
+	MIDI_DataTx(midi_usb_assembly_buffer, usb_bytes_to_tx);
+
+	midi_serial_transmit();
+	return 0;
+}
+
 int8_t midiCmd_send_cc_command_from_rom(uint8_t *pRom, uint8_t on_off){
 	// Check switch off value is valid, else no off value will be sent
 	if(!on_off){
